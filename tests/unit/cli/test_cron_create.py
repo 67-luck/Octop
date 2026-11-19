@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from click.testing import CliRunner
+
+from octop.cli.main import cli
 from octop.cli.support.db import open_cli_services
 from octop.cli.support.offline_ops import create_cron_offline
 from octop.infra.gateway.threads import ThreadRegistry
@@ -59,3 +63,38 @@ def test_create_cron_offline_defaults_to_dashboard_channel(tmp_path: Path) -> No
         home=tmp_path,
     )
     assert row["session_key"] == ThreadRegistry.dashboard_key(agent_id=aid, user_id=uid)
+
+
+@pytest.mark.parametrize(
+    ("prompt", "message"),
+    [("   ", "prompt must not be empty"), ("x" * 2001, "prompt must be at most 2000 characters")],
+    ids=["blank", "too-long"],
+)
+def test_cron_create_cli_reports_invalid_prompt_as_cli_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, prompt: str, message: str
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    aid = new_ulid()
+    with open_cli_services(tmp_path) as svc:
+        uid = svc.user_repo.create(username="u", password_hash="h", role="user")
+        svc.agent_repo.create(agent_id=aid, user_id=uid, name="bot")
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "cron",
+            "create",
+            "--agent",
+            aid,
+            "--user",
+            "u",
+            "--trigger",
+            "interval:60",
+            "--prompt",
+            prompt,
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert not isinstance(result.exception, ValueError)
+    assert message in result.output

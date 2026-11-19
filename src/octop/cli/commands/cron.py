@@ -98,6 +98,9 @@ def create_job(
         )
     except OctopError as exc:
         fail_octop(exc)
+    except ValueError as exc:
+        # prompt / task-type validation raises plain ValueError
+        raise click.ClickException(str(exc)) from exc
     click.echo(_json.dumps(row, indent=2))
     click.echo("hint: restart `octop run` to load new cron jobs into the running server.")
 
